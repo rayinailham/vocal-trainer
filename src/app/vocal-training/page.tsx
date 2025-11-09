@@ -8,16 +8,24 @@ import {
   isPitchInTolerance,
   calculateCentsDifference
 } from '@/lib/pitch';
-import { 
-  TrainingMode, 
-  TrainingVariation, 
-  TrainingSession, 
-  TrainingScore, 
+import {
+  TrainingMode,
+  TrainingVariation,
+  TrainingSession,
+  TrainingScore,
   TrainingProgress,
   TrainingSettings,
   ExerciseNote
 } from '@/types/training';
-import { PitchDetectionResult } from '@/types/audio';
+import { PitchDetectionResult, VocalRange } from '@/types/audio';
+import {
+  saveTrainingSession,
+  loadTrainingSessions,
+  saveTrainingSettings,
+  loadTrainingSettings,
+  updateTrainingStats,
+  loadVocalRange
+} from '@/lib/storage';
 import AudioVisualizer from '@/components/AudioVisualizer';
 import PitchMeter from '@/components/PitchMeter';
 import ProgressIndicator from '@/components/ProgressIndicator';
@@ -133,6 +141,9 @@ export default function VocalTrainingPage() {
   const [scores, setScores] = useState<TrainingScore[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isInitialized, setIsInitialized] = useState(false);
+  const [previousSessions, setPreviousSessions] = useState<TrainingSession[]>([]);
+  const [savedVocalRange, setSavedVocalRange] = useState<VocalRange | null>(null);
+  const [saveSuccess, setSaveSuccess] = useState(false);
   
   // Refs for timing and pitch tracking
   const noteStartTime = useRef<number>(0);
@@ -143,6 +154,23 @@ export default function VocalTrainingPage() {
     // Initialize audio processor on component mount
     const processor = createAudioProcessor();
     setAudioProcessor(processor);
+    
+    // Load saved data
+    const savedSettings = loadTrainingSettings();
+    setTrainingSettings(savedSettings);
+    
+    const sessions = loadTrainingSessions();
+    setPreviousSessions(sessions.slice(-5)); // Show last 5 sessions
+    
+    const vocalRange = loadVocalRange();
+    if (vocalRange) {
+      setSavedVocalRange(vocalRange);
+      // Adjust root note based on vocal range if available
+      const noteInMiddle = getMiddleNote(vocalRange);
+      if (noteInMiddle) {
+        setRootNote(noteInMiddle);
+      }
+    }
     
     return () => {
       if (recordingTimer.current) {
@@ -297,6 +325,48 @@ export default function VocalTrainingPage() {
       note: match[1],
       octave: parseInt(match[2], 10)
     };
+  };
+
+  const getMiddleNote = (vocalRange: VocalRange): string | null => {
+    if (!vocalRange || !vocalRange.lowestNote || !vocalRange.highestNote) {
+      return null;
+    }
+    
+    // Simple logic to get a note in the middle of the range
+    const lowestFreq = vocalRange.lowestFrequency;
+    const highestFreq = vocalRange.highestFrequency;
+    const middleFreq = (lowestFreq + highestFreq) / 2;
+    const noteInfo = frequencyToNote(middleFreq);
+    
+    return `${noteInfo.note}${noteInfo.octave}`;
+  };
+
+  const updateSettings = (newSettings: Partial<TrainingSettings>) => {
+    const updatedSettings = { ...trainingSettings, ...newSettings };
+    setTrainingSettings(updatedSettings);
+    
+    try {
+      saveTrainingSettings(updatedSettings);
+    } catch (err) {
+      console.error('Failed to save training settings:', err);
+    }
+  };
+
+  const saveSession = async (session: TrainingSession) => {
+    try {
+      saveTrainingSession(session);
+      updateTrainingStats(session);
+      
+      // Update previous sessions list
+      const sessions = loadTrainingSessions();
+      setPreviousSessions(sessions.slice(-5));
+      
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 3000);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to save session';
+      setError(errorMessage);
+    }
   };
 
   const startTraining = async () => {
@@ -481,6 +551,9 @@ export default function VocalTrainingPage() {
           completed: true
         };
         setCurrentSession(completedSession);
+        
+        // Save the completed session
+        saveSession(completedSession);
         setTrainingState('complete');
       } else {
         setCurrentNoteIndex(nextIndex);
@@ -600,10 +673,7 @@ export default function VocalTrainingPage() {
                     type="checkbox"
                     id="autoAdvance"
                     checked={trainingSettings.autoAdvance}
-                    onChange={(e) => setTrainingSettings({
-                      ...trainingSettings,
-                      autoAdvance: e.target.checked
-                    })}
+                    onChange={(e) => updateSettings({ autoAdvance: e.target.checked })}
                     className="mr-2"
                   />
                   <label htmlFor="autoAdvance" className="text-sm text-gray-700">
@@ -616,10 +686,7 @@ export default function VocalTrainingPage() {
                     type="checkbox"
                     id="showHints"
                     checked={trainingSettings.showHints}
-                    onChange={(e) => setTrainingSettings({
-                      ...trainingSettings,
-                      showHints: e.target.checked
-                    })}
+                    onChange={(e) => updateSettings({ showHints: e.target.checked })}
                     className="mr-2"
                   />
                   <label htmlFor="showHints" className="text-sm text-gray-700">
@@ -637,15 +704,47 @@ export default function VocalTrainingPage() {
                     max="100"
                     step="10"
                     value={trainingSettings.tolerance}
-                    onChange={(e) => setTrainingSettings({
-                      ...trainingSettings,
-                      tolerance: parseInt(e.target.value)
-                    })}
+                    onChange={(e) => updateSettings({ tolerance: parseInt(e.target.value) })}
                     className="w-full"
                   />
                 </div>
               </div>
             </div>
+
+            {/* Vocal Range Info */}
+            {savedVocalRange && (
+              <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                <h3 className="text-sm font-medium text-blue-800 mb-2">Your Vocal Range</h3>
+                <div className="text-sm text-blue-700">
+                  Range: {savedVocalRange.lowestNote} - {savedVocalRange.highestNote} ({savedVocalRange.voiceType})
+                </div>
+                <div className="text-xs text-blue-600 mt-1">
+                  Training adjusted to your vocal range
+                </div>
+              </div>
+            )}
+
+            {/* Previous Sessions */}
+            {previousSessions.length > 0 && (
+              <div className="mb-6">
+                <h3 className="text-sm font-medium text-gray-700 mb-2">Recent Sessions</h3>
+                <div className="space-y-2">
+                  {previousSessions.map((session) => (
+                    <div key={session.id} className="flex items-center justify-between p-2 bg-gray-50 rounded text-sm">
+                      <div>
+                        <span className="font-medium">{session.variation.name}</span>
+                        <span className="text-gray-500 ml-2">
+                          {new Date(session.startTime).toLocaleDateString()}
+                        </span>
+                      </div>
+                      <div className={`font-bold ${getScoreColor(session.averageScore || 0)}`}>
+                        {(session.averageScore || 0).toFixed(1)}%
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Start Button */}
             <div className="text-center">
@@ -866,6 +965,13 @@ export default function VocalTrainingPage() {
                 ))}
               </div>
             </div>
+
+            {/* Save Success Message */}
+            {saveSuccess && (
+              <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-4 text-center">
+                <strong>Success!</strong> Your training session has been saved.
+              </div>
+            )}
 
             {/* Action Buttons */}
             <div className="flex gap-4 justify-center">

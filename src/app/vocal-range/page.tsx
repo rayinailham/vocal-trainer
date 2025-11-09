@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { AudioProcessor, createAudioProcessor } from '@/lib/audio';
 import { calculateVocalRange } from '@/lib/pitch';
 import { PitchDetectionResult, VocalRange } from '@/types/audio';
+import { saveVocalRange, loadVocalRange } from '@/lib/storage';
 import AudioVisualizer from '@/components/AudioVisualizer';
 import PitchMeter from '@/components/PitchMeter';
 import ProgressIndicator from '@/components/ProgressIndicator';
@@ -65,6 +66,8 @@ export default function VocalRangePage() {
   const [currentPitch, setCurrentPitch] = useState<PitchDetectionResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [vocalRange, setVocalRange] = useState<VocalRange | null>(null);
+  const [savedVocalRange, setSavedVocalRange] = useState<VocalRange | null>(null);
+  const [saveSuccess, setSaveSuccess] = useState(false);
   
   // Recording data
   const lowestFrequencies = useRef<number[]>([]);
@@ -80,6 +83,12 @@ export default function VocalRangePage() {
     // Initialize audio processor on component mount
     const processor = createAudioProcessor();
     setAudioProcessor(processor);
+    
+    // Load saved vocal range if exists
+    const saved = loadVocalRange();
+    if (saved) {
+      setSavedVocalRange(saved);
+    }
     
     return () => {
       if (recordingTimer.current) {
@@ -244,6 +253,7 @@ export default function VocalRangePage() {
     setCurrentPitch(null);
     setError(null);
     setVocalRange(null);
+    setSaveSuccess(false);
     lowestFrequencies.current = [];
     highestFrequencies.current = [];
     stablePitchCount.current = 0;
@@ -252,6 +262,27 @@ export default function VocalRangePage() {
     if (recordingTimer.current) {
       clearTimeout(recordingTimer.current);
       recordingTimer.current = null;
+    }
+  };
+
+  const saveVocalRangeResults = () => {
+    if (!vocalRange) {
+      setError('No vocal range data to save');
+      return;
+    }
+
+    try {
+      saveVocalRange(vocalRange);
+      setSavedVocalRange(vocalRange);
+      setSaveSuccess(true);
+      
+      // Hide success message after 3 seconds
+      setTimeout(() => {
+        setSaveSuccess(false);
+      }, 3000);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to save vocal range';
+      setError(errorMessage);
     }
   };
 
@@ -322,13 +353,38 @@ export default function VocalRangePage() {
 
           {/* Step Content */}
           {currentStep === 'idle' && (
-            <div className="text-center">
-              <button
-                onClick={startDetection}
-                className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-8 rounded-lg text-lg transition-colors"
-              >
-                Start Vocal Range Detection
-              </button>
+            <div className="space-y-6">
+              {savedVocalRange && (
+                <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                  <h3 className="text-lg font-semibold text-green-800 mb-2">Previously Saved Results</h3>
+                  <div className="grid grid-cols-2 gap-4 mb-4">
+                    <div>
+                      <span className="text-sm text-green-600">Range:</span>
+                      <div className="font-mono font-bold text-green-900">
+                        {savedVocalRange.lowestNote} - {savedVocalRange.highestNote}
+                      </div>
+                    </div>
+                    <div>
+                      <span className="text-sm text-green-600">Voice Type:</span>
+                      <div className={`font-semibold ${getVoiceTypeColor(savedVocalRange.voiceType)}`}>
+                        {savedVocalRange.voiceType.charAt(0).toUpperCase() + savedVocalRange.voiceType.slice(1)}
+                      </div>
+                    </div>
+                  </div>
+                  <p className="text-sm text-green-700">
+                    You can retake the test to update your saved results.
+                  </p>
+                </div>
+              )}
+              
+              <div className="text-center">
+                <button
+                  onClick={startDetection}
+                  className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-8 rounded-lg text-lg transition-colors"
+                >
+                  {savedVocalRange ? 'Retake Vocal Range Test' : 'Start Vocal Range Detection'}
+                </button>
+              </div>
             </div>
           )}
 
@@ -480,11 +536,19 @@ export default function VocalRangePage() {
                   Retake Test
                 </button>
                 <button
+                  onClick={saveVocalRangeResults}
                   className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-6 rounded-lg transition-colors"
                 >
                   Save Results
                 </button>
               </div>
+              
+              {/* Save Success Message */}
+              {saveSuccess && (
+                <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded text-center">
+                  <strong>Success!</strong> Your vocal range has been saved.
+                </div>
+              )}
             </div>
           )}
         </div>
