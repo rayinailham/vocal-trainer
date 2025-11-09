@@ -162,7 +162,7 @@ Membuat navigation system untuk aplikasi.
 
 ---
 
-## Phase 6: Update Main Page (1 hari)
+## Phase 6: Update Main Page (1 hari) ✅ COMPLETED
 
 ### Tujuan
 Membuat landing page yang menarik dan informatif.
@@ -333,7 +333,7 @@ gantt
     Navigation              :done, phase5, after phase4, 1d
     
     section Phase 6-10
-    Main Page               :phase6, after phase5, 1d
+    Main Page               :done, phase6, after phase5, 1d
     Vocal Range Page        :phase7, after phase6, 1d
     Vocal Training Page     :phase8, after phase7, 1d
     Storage Utilities       :phase9, after phase8, 1d
