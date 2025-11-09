@@ -2,13 +2,17 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { AudioProcessor, createAudioProcessor } from '@/lib/audio';
-import { 
-  frequencyToNote, 
-  noteToFrequency, 
+import {
+  frequencyToNote,
+  noteToFrequency,
   isPitchInTolerance,
-  calculateVocalRange 
+  calculateVocalRange
 } from '@/lib/pitch';
 import { PitchDetectionResult } from '@/types/audio';
+import AudioVisualizer from '@/components/AudioVisualizer';
+import PianoKeyboard from '@/components/PianoKeyboard';
+import PitchMeter from '@/components/PitchMeter';
+import ProgressIndicator from '@/components/ProgressIndicator';
 
 export default function TestAudioPage() {
   const [audioProcessor, setAudioProcessor] = useState<AudioProcessor | null>(null);
@@ -18,6 +22,12 @@ export default function TestAudioPage() {
   const [error, setError] = useState<string | null>(null);
   const [testResults, setTestResults] = useState<string[]>([]);
   const recordedFrequencies = useRef<number[]>([]);
+  
+  // Component testing states
+  const [targetNote, setTargetNote] = useState<string>('A4');
+  const [highlightedNotes, setHighlightedNotes] = useState<string[]>(['C4', 'E4', 'G4']);
+  const [progressStep, setProgressStep] = useState<number>(3);
+  const [totalSteps] = useState<number>(8);
 
   useEffect(() => {
     // Initialize audio processor on component mount
@@ -239,6 +249,168 @@ export default function TestAudioPage() {
             <div className="flex items-center">
               <div className={`w-3 h-3 rounded-full mr-2 ${isRecording ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></div>
               <span>{isRecording ? 'Recording' : 'Not Recording'}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* UI Components Testing */}
+        <div className="space-y-8 mb-8">
+          <div className="bg-white p-6 rounded shadow">
+            <h2 className="text-xl font-semibold mb-4">Audio Visualizer Test</h2>
+            <AudioVisualizer
+              width={700}
+              height={200}
+              currentPitch={currentPitch}
+              targetNote={targetNote}
+              isRecording={isRecording}
+              className="mb-4"
+            />
+            <div className="flex items-center gap-4">
+              <label className="text-sm font-medium">Target Note:</label>
+              <select
+                value={targetNote}
+                onChange={(e) => setTargetNote(e.target.value)}
+                className="border rounded px-2 py-1"
+              >
+                <option value="A4">A4</option>
+                <option value="C4">C4</option>
+                <option value="E4">E4</option>
+                <option value="G4">G4</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="bg-white p-6 rounded shadow">
+            <h2 className="text-xl font-semibold mb-4">Pitch Meter Test</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <PitchMeter
+                currentPitch={currentPitch}
+                targetNote={targetNote}
+                tolerance={50}
+                showCents={true}
+                showFrequency={true}
+              />
+              <div className="space-y-4">
+                <h3 className="font-medium">Settings:</h3>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Target Note:</label>
+                  <select
+                    value={targetNote}
+                    onChange={(e) => setTargetNote(e.target.value)}
+                    className="border rounded px-2 py-1 w-full"
+                  >
+                    <option value="A4">A4</option>
+                    <option value="C4">C4</option>
+                    <option value="E4">E4</option>
+                    <option value="G4">G4</option>
+                  </select>
+                </div>
+                <div className="text-sm text-gray-600">
+                  {currentPitch ? (
+                    <div>
+                      <p>Current: {currentPitch.note}{currentPitch.octave}</p>
+                      <p>Frequency: {currentPitch.frequency.toFixed(1)}Hz</p>
+                      <p>Cents: {currentPitch.cents}</p>
+                    </div>
+                  ) : (
+                    <p>No pitch detected</p>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white p-6 rounded shadow">
+            <h2 className="text-xl font-semibold mb-4">Piano Keyboard Test</h2>
+            <PianoKeyboard
+              startOctave={3}
+              endOctave={4}
+              highlightedNotes={highlightedNotes}
+              onNoteClick={(note, frequency) => {
+                addTestResult(`🎹 Piano key pressed: ${note} (${frequency.toFixed(2)}Hz)`);
+              }}
+            />
+            <div className="mt-4">
+              <h3 className="font-medium mb-2">Highlighted Notes:</h3>
+              <div className="flex gap-2 flex-wrap">
+                {['C4', 'E4', 'G4', 'A4', 'C5'].map(note => (
+                  <button
+                    key={note}
+                    onClick={() => {
+                      setHighlightedNotes(prev =>
+                        prev.includes(note)
+                          ? prev.filter(n => n !== note)
+                          : [...prev, note]
+                      );
+                    }}
+                    className={`px-3 py-1 rounded text-sm ${
+                      highlightedNotes.includes(note)
+                        ? 'bg-blue-500 text-white'
+                        : 'bg-gray-200 text-gray-700'
+                    }`}
+                  >
+                    {note}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white p-6 rounded shadow">
+            <h2 className="text-xl font-semibold mb-4">Progress Indicator Test</h2>
+            <div className="space-y-6">
+              <div>
+                <h3 className="font-medium mb-2">Linear Progress:</h3>
+                <ProgressIndicator
+                  currentStep={progressStep}
+                  totalSteps={totalSteps}
+                  currentLabel={`Processing step ${progressStep} of ${totalSteps}`}
+                  showPercentage={true}
+                  showStepNumbers={true}
+                  variant="linear"
+                />
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <h3 className="font-medium mb-2">Circular Progress:</h3>
+                  <ProgressIndicator
+                    currentStep={progressStep}
+                    totalSteps={totalSteps}
+                    showPercentage={true}
+                    variant="circular"
+                    size="medium"
+                  />
+                </div>
+                
+                <div>
+                  <h3 className="font-medium mb-2">Steps Progress:</h3>
+                  <ProgressIndicator
+                    currentStep={progressStep}
+                    totalSteps={totalSteps}
+                    showStepNumbers={true}
+                    variant="steps"
+                    size="small"
+                  />
+                </div>
+                
+                <div>
+                  <h3 className="font-medium mb-2">Controls:</h3>
+                  <div className="space-y-2">
+                    <input
+                      type="range"
+                      min="0"
+                      max={totalSteps}
+                      value={progressStep}
+                      onChange={(e) => setProgressStep(parseInt(e.target.value))}
+                      className="w-full"
+                    />
+                    <div className="text-sm text-gray-600">
+                      Step: {progressStep} / {totalSteps}
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
