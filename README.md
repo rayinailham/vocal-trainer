@@ -33,7 +33,7 @@ Vocal Trainer is a comprehensive web application designed to help users improve 
 
 ## Technology Stack
 
-- **Framework**: Next.js 15.5.5
+- **Framework**: Next.js 15.5.5 (Latest)
 - **Language**: TypeScript 5
 - **Styling**: Tailwind CSS 3.4.6
 - **Audio Processing**: Meyda.js
