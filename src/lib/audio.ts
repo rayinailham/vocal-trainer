@@ -1,12 +1,90 @@
 import Meyda from 'meyda';
-import { 
-  AudioSettings, 
-  AudioStream, 
-  PitchDetectionResult, 
+import {
+  AudioSettings,
+  AudioStream,
+  PitchDetectionResult,
   MicrophonePermission,
-  PitchData 
+  PitchData,
+  VocalRange
 } from '@/types/audio';
 
+// Type definitions for Meyda features
+interface MeydaFeatures {
+  buffer: Float32Array;
+}
+
+/**
+ * Simple autocorrelation-based pitch detection
+ */
+function detectPitch(audioBuffer: Float32Array, sampleRate: number): number | null {
+  const bufferSize = audioBuffer.length;
+  const threshold = 0.01; // Threshold for pitch detection
+  
+  // Calculate RMS to check if there's enough signal
+  let rms = 0;
+  for (let i = 0; i < bufferSize; i++) {
+    rms += audioBuffer[i] * audioBuffer[i];
+  }
+  rms = Math.sqrt(rms / bufferSize);
+  
+  if (rms < threshold) {
+    return null; // No significant signal
+  }
+  
+  // Autocorrelation
+  const correlations = new Float32Array(bufferSize);
+  for (let lag = 0; lag < bufferSize; lag++) {
+    let correlation = 0;
+    for (let i = 0; i < bufferSize - lag; i++) {
+      correlation += audioBuffer[i] * audioBuffer[i + lag];
+    }
+    correlations[lag] = correlation;
+  }
+  
+  // Find the peak in correlations (excluding lag 0)
+  let maxCorrelation = 0;
+  let bestLag = -1;
+  
+  // Only search in reasonable pitch range (80Hz - 1100Hz for human voice)
+  const minLag = Math.floor(sampleRate / 1100);
+  const maxLag = Math.floor(sampleRate / 80);
+  
+  for (let lag = minLag; lag < maxLag && lag < bufferSize; lag++) {
+    if (correlations[lag] > maxCorrelation) {
+      maxCorrelation = correlations[lag];
+      bestLag = lag;
+    }
+  }
+  
+  if (bestLag === -1 || maxCorrelation < 0.3) {
+    return null; // No clear pitch detected
+  }
+  
+  // Calculate frequency from lag
+  const frequency = sampleRate / bestLag;
+  
+  // Validate frequency is in human voice range
+  if (frequency < 80 || frequency > 1100) {
+    return null;
+  }
+  
+  return frequency;
+}
+
+/**
+ * AudioProcessor handles all audio processing for the Vocal Trainer application
+ *
+ * This class supports the simplified vocal range detection flow with:
+ * - Auto-initialization capabilities
+ * - Real-time pitch monitoring for practice
+ * - Seamless transition to range detection
+ * - Comprehensive error handling and cleanup
+ *
+ * Key improvements for the new flow:
+ * - No step-based restrictions
+ * - Direct monitoring mode activation
+ * - Flexible state management
+ */
 export class AudioProcessor {
   private audioContext: AudioContext | null = null;
   private mediaStream: MediaStream | null = null;
@@ -14,8 +92,19 @@ export class AudioProcessor {
   private analyser: AnalyserNode | null = null;
   private meydaAnalyzer: ReturnType<typeof Meyda.createMeydaAnalyzer> | null = null;
   private isProcessing: boolean = false;
+  private isMonitoring: boolean = false;
   private settings: AudioSettings;
   private onPitchDetectedCallback?: (result: PitchDetectionResult) => void;
+  private onMonitoringCallback?: (result: PitchDetectionResult) => void;
+  private onRangeProgressCallback?: (minFreq: number, maxFreq: number) => void;
+  private onRangeCompleteCallback?: (range: VocalRange) => void;
+  private recordedFrequencies: number[] = [];
+  private minFrequency: number = Infinity;
+  private maxFrequency: number = -Infinity;
+  private stableReadings: number = 0;
+  private maxRecordedFrequencies: number = 100; // Limit to prevent memory leaks
+  private lastProcessedTime: number = 0;
+  private processingInterval: number = 100; // Process every 100ms to reduce CPU load
 
   constructor(settings: AudioSettings) {
     this.settings = settings;
@@ -71,7 +160,7 @@ export class AudioProcessor {
   }
 
   /**
-   * Start pitch detection using Meyda
+   * Start pitch detection using custom algorithm
    */
   startPitchDetection(
     onPitchDetected: (result: PitchDetectionResult) => void
@@ -82,16 +171,26 @@ export class AudioProcessor {
 
     this.onPitchDetectedCallback = onPitchDetected;
 
-    // Create Meyda analyzer
+    // Create Meyda analyzer for getting audio buffer
     this.meydaAnalyzer = Meyda.createMeydaAnalyzer({
       audioContext: this.audioContext,
       source: this.source,
       bufferSize: this.settings.bufferSize,
-      featureExtractors: ['pitch'],
-      callback: (features: { pitch: number | null }) => {
-        if (features.pitch !== null && this.onPitchDetectedCallback) {
-          const result = this.processPitchData(features.pitch);
-          this.onPitchDetectedCallback(result);
+      featureExtractors: ["buffer"],
+      callback: (features: MeydaFeatures) => {
+        // Throttle processing to reduce CPU load
+        const now = Date.now();
+        if (now - this.lastProcessedTime < this.processingInterval) {
+          return;
+        }
+        this.lastProcessedTime = now;
+        
+        if (features && features.buffer && this.onPitchDetectedCallback) {
+          const frequency = detectPitch(features.buffer, this.audioContext!.sampleRate);
+          if (frequency !== null) {
+            const result = this.processPitchData(frequency);
+            this.onPitchDetectedCallback(result);
+          }
         }
       }
     });
@@ -204,17 +303,16 @@ export class AudioProcessor {
     }
 
     const bufferLength = this.analyser.frequencyBinCount;
-    const dataArray = new Float32Array(bufferLength);
-    this.analyser.getFloatFrequencyData(dataArray);
+    const timeData = new Float32Array(bufferLength);
+    this.analyser.getFloatTimeDomainData(timeData);
 
-    // Use Meyda to get pitch
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const features = Meyda.extract('pitch' as any, dataArray) as { pitch: number | null };
+    // Use custom pitch detection
+    const frequency = detectPitch(timeData, this.audioContext!.sampleRate);
     
-    if (features && features.pitch !== null) {
-      const { note, octave, cents } = this.frequencyToNote(features.pitch);
+    if (frequency !== null) {
+      const { note, octave, cents } = this.frequencyToNote(frequency);
       return {
-        frequency: features.pitch,
+        frequency,
         note,
         octave,
         cents,
@@ -248,6 +346,8 @@ export class AudioProcessor {
    */
   dispose(): void {
     this.stopPitchDetection();
+    this.stopMonitoring();
+    this.stopRangeDetection();
     
     if (this.mediaStream) {
       this.mediaStream.getTracks().forEach(track => track.stop());
@@ -264,12 +364,215 @@ export class AudioProcessor {
       this.analyser = null;
     }
     
+    if (this.meydaAnalyzer) {
+      this.meydaAnalyzer.stop();
+      this.meydaAnalyzer = null;
+    }
+    
     if (this.audioContext && this.audioContext.state !== 'closed') {
       this.audioContext.close();
       this.audioContext = null;
     }
     
+    // Clear all callbacks to prevent memory leaks
+    this.onPitchDetectedCallback = undefined;
+    this.onMonitoringCallback = undefined;
+    this.onRangeProgressCallback = undefined;
+    this.onRangeCompleteCallback = undefined;
+    
+    // Clear recorded data
+    this.recordedFrequencies = [];
+    this.minFrequency = Infinity;
+    this.maxFrequency = -Infinity;
+    this.stableReadings = 0;
+    
     this.isProcessing = false;
+    this.isMonitoring = false;
+  }
+
+  /**
+   * Start continuous monitoring mode for practice
+   *
+   * This is a key feature of the simplified flow - users can practice
+   * with real-time feedback without going through a separate "practice step"
+   */
+  startMonitoring(onPitchDetected: (result: PitchDetectionResult) => void): void {
+    if (!this.audioContext || !this.source) {
+      throw new Error('Audio not initialized. Call initialize() first.');
+    }
+
+    this.onMonitoringCallback = onPitchDetected;
+    this.isMonitoring = true;
+
+    // Create Meyda analyzer for monitoring
+    this.meydaAnalyzer = Meyda.createMeydaAnalyzer({
+      audioContext: this.audioContext,
+      source: this.source,
+      bufferSize: this.settings.bufferSize,
+      featureExtractors: ["buffer"],
+      callback: (features: MeydaFeatures) => {
+        // Throttle processing to reduce CPU load
+        const now = Date.now();
+        if (now - this.lastProcessedTime < this.processingInterval) {
+          return;
+        }
+        this.lastProcessedTime = now;
+        
+        if (features && features.buffer && this.onMonitoringCallback && this.isMonitoring) {
+          const frequency = detectPitch(features.buffer, this.audioContext!.sampleRate);
+          if (frequency !== null) {
+            const result = this.processPitchData(frequency);
+            this.onMonitoringCallback(result);
+          }
+        }
+      }
+    });
+
+    this.meydaAnalyzer.start();
+  }
+
+  /**
+   * Stop monitoring mode
+   */
+  stopMonitoring(): void {
+    if (this.meydaAnalyzer && this.isMonitoring) {
+      this.meydaAnalyzer.stop();
+      this.meydaAnalyzer = null;
+    }
+    this.isMonitoring = false;
+    this.onMonitoringCallback = undefined;
+  }
+
+  /**
+   * Start vocal range detection with real-time tracking
+   *
+   * Directly starts range detection without requiring users to go through
+   * multiple steps. Seamlessly transitions from monitoring mode.
+   */
+  startRangeDetection(
+    onProgress: (minFreq: number, maxFreq: number) => void,
+    onComplete: (range: VocalRange) => void
+  ): void {
+    if (!this.audioContext || !this.source) {
+      throw new Error('Audio not initialized. Call initialize() first.');
+    }
+
+    // Reset range tracking
+    this.recordedFrequencies = [];
+    this.minFrequency = Infinity;
+    this.maxFrequency = -Infinity;
+    this.stableReadings = 0;
+
+    this.onRangeProgressCallback = onProgress;
+    this.onRangeCompleteCallback = onComplete;
+
+    // Create Meyda analyzer for range detection
+    this.meydaAnalyzer = Meyda.createMeydaAnalyzer({
+      audioContext: this.audioContext,
+      source: this.source,
+      bufferSize: this.settings.bufferSize,
+      featureExtractors: ["buffer"],
+      callback: (features: MeydaFeatures) => {
+        if (features && features.buffer) {
+          const frequency = detectPitch(features.buffer, this.audioContext!.sampleRate);
+          if (frequency !== null) {
+            this.handleRangeDetection(frequency);
+          }
+        }
+      }
+    });
+
+    this.meydaAnalyzer.start();
+    this.isProcessing = true;
+  }
+
+  /**
+   * Stop range detection
+   */
+  stopRangeDetection(): void {
+    if (this.meydaAnalyzer) {
+      this.meydaAnalyzer.stop();
+      this.meydaAnalyzer = null;
+    }
+    this.isProcessing = false;
+    this.onRangeProgressCallback = undefined;
+    this.onRangeCompleteCallback = undefined;
+  }
+
+  /**
+   * Handle pitch data for range detection
+   */
+  private handleRangeDetection(frequency: number): void {
+    const result = this.processPitchData(frequency);
+    
+    // Only consider pitches with good confidence
+    if (result.confidence > 0.8) {
+      // Prevent memory leaks by limiting the number of recorded frequencies
+      if (this.recordedFrequencies.length >= this.maxRecordedFrequencies) {
+        this.recordedFrequencies.shift(); // Remove oldest entry
+      }
+      
+      this.recordedFrequencies.push(frequency);
+      this.minFrequency = Math.min(this.minFrequency, frequency);
+      this.maxFrequency = Math.max(this.maxFrequency, frequency);
+      this.stableReadings++;
+
+      // Update progress
+      if (this.onRangeProgressCallback) {
+        this.onRangeProgressCallback(this.minFrequency, this.maxFrequency);
+      }
+
+      // Check if we have enough data for complete detection
+      if (this.stableReadings >= 30) { // 3 seconds at 10Hz
+        this.completeRangeDetection();
+      }
+    }
+  }
+
+  /**
+   * Complete range detection and calculate results
+   */
+  private completeRangeDetection(): void {
+    if (this.recordedFrequencies.length === 0) {
+      return;
+    }
+
+    // Import calculateVocalRange function dynamically to avoid circular dependency
+    import('./pitch').then(({ calculateVocalRange }) => {
+      const range = calculateVocalRange(this.recordedFrequencies);
+
+      if (this.onRangeCompleteCallback) {
+        this.onRangeCompleteCallback(range);
+      }
+
+      // Stop detection after completion
+      this.stopRangeDetection();
+    }).catch(error => {
+      console.error('Failed to import pitch calculation:', error);
+      this.stopRangeDetection();
+    });
+  }
+
+  /**
+   * Check if currently monitoring
+   */
+  isCurrentlyMonitoring(): boolean {
+    return this.isMonitoring;
+  }
+
+  /**
+   * Get current range tracking data
+   */
+  getCurrentRange(): { min: number; max: number; readings: number } | null {
+    if (this.minFrequency === Infinity || this.maxFrequency === -Infinity) {
+      return null;
+    }
+
+    return {
+      min: this.minFrequency,
+      max: this.maxFrequency,
+      readings: this.stableReadings
+    };
   }
 }
 

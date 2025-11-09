@@ -7,6 +7,7 @@ interface AudioVisualizerProps {
   currentPitch?: PitchData | null;
   targetNote?: string;
   isRecording?: boolean;
+  isMonitoring?: boolean;
   className?: string;
 }
 
@@ -16,6 +17,7 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
   currentPitch,
   targetNote,
   isRecording = false,
+  isMonitoring = false,
   className = ''
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -23,7 +25,7 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
 
   // Generate mock waveform data for visualization
   useEffect(() => {
-    if (!isRecording) {
+    if (!isRecording && !isMonitoring) {
       setWaveformData([]);
       return;
     }
@@ -39,7 +41,7 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
     }, 50);
 
     return () => clearInterval(interval);
-  }, [isRecording, width]);
+  }, [isRecording, isMonitoring, width]);
 
   // Draw waveform and pitch indicator
   useEffect(() => {
@@ -68,8 +70,8 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
     }
 
     // Draw waveform
-    if (waveformData.length > 0 && isRecording) {
-      ctx.strokeStyle = '#00ff88';
+    if (waveformData.length > 0 && (isRecording || isMonitoring)) {
+      ctx.strokeStyle = isMonitoring ? '#4ade80' : '#00ff88';
       ctx.lineWidth = 2;
       ctx.beginPath();
 
@@ -88,7 +90,7 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
     }
 
     // Draw current pitch indicator
-    if (currentPitch && isRecording) {
+    if (currentPitch && (isRecording || isMonitoring)) {
       const { frequency, note, octave, cents } = currentPitch;
       
       // Calculate position based on frequency (logarithmic scale)
@@ -101,7 +103,7 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
       const x = normalizedFreq * width;
 
       // Draw pitch line
-      ctx.strokeStyle = '#ff6b6b';
+      ctx.strokeStyle = isMonitoring ? '#3b82f6' : '#ff6b6b';
       ctx.lineWidth = 3;
       ctx.beginPath();
       ctx.moveTo(x, 0);
@@ -130,7 +132,15 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
       ctx.arc(width - 20, 20, 8, 0, Math.PI * 2);
       ctx.fill();
     }
-  }, [waveformData, currentPitch, targetNote, isRecording, width, height]);
+
+    // Draw monitoring indicator
+    if (isMonitoring && !isRecording) {
+      ctx.fillStyle = '#22c55e';
+      ctx.beginPath();
+      ctx.arc(width - 20, 20, 8, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }, [waveformData, currentPitch, targetNote, isRecording, isMonitoring, width, height]);
 
   return (
     <div className={`audio-visualizer ${className}`}>

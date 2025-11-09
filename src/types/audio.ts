@@ -1,7 +1,13 @@
 /**
  * Audio-related type definitions for Vocal Trainer application
+ *
+ * These types support the simplified vocal range detection flow that replaces
+ * the step-based system with state-based transitions.
  */
 
+/**
+ * Raw pitch data from audio analysis
+ */
 export interface PitchData {
   frequency: number;
   note: string;
@@ -10,6 +16,10 @@ export interface PitchData {
   timestamp: number;
 }
 
+/**
+ * Complete vocal range analysis results
+ * Used in the results display and for saving user data
+ */
 export interface VocalRange {
   lowestNote: string;
   highestNote: string;
@@ -19,6 +29,10 @@ export interface VocalRange {
   voiceType: 'soprano' | 'mezzo-soprano' | 'alto' | 'tenor' | 'baritone' | 'bass' | 'unknown';
 }
 
+/**
+ * Configuration for audio processing
+ * Used when creating AudioProcessor instances
+ */
 export interface AudioSettings {
   sampleRate: number;
   bufferSize: number;
@@ -28,6 +42,10 @@ export interface AudioSettings {
   echoCancellation: boolean;
 }
 
+/**
+ * Result of real-time pitch detection
+ * Includes confidence metrics for quality assessment
+ */
 export interface PitchDetectionResult {
   frequency: number;
   note: string;
@@ -38,6 +56,10 @@ export interface PitchDetectionResult {
   timestamp: number;
 }
 
+/**
+ * Advanced audio analyzer configuration
+ * Currently not used but available for future enhancements
+ */
 export interface AudioAnalyzerSettings {
   windowSize: number;
   hopSize: number;
@@ -45,12 +67,20 @@ export interface AudioAnalyzerSettings {
   pitchAlgorithm: 'YIN' | 'AMDF' | 'McLeod' | 'autocorrelation';
 }
 
+/**
+ * Microphone permission status and device information
+ * Used for handling browser microphone permissions
+ */
 export interface MicrophonePermission {
   granted: boolean;
   deviceLabel?: string;
   deviceId?: string;
 }
 
+/**
+ * Complete audio stream components
+ * Used for advanced audio processing and context management
+ */
 export interface AudioStream {
   mediaStream: MediaStream;
   audioContext: AudioContext;
