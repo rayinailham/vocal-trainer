@@ -1,4 +1,3 @@
-
 /**
  * Audio-related type definitions for Vocal Trainer application
  */
@@ -43,3 +42,18 @@ export interface AudioAnalyzerSettings {
   windowSize: number;
   hopSize: number;
   sampleRate: number;
+  pitchAlgorithm: 'YIN' | 'AMDF' | 'McLeod' | 'autocorrelation';
+}
+
+export interface MicrophonePermission {
+  granted: boolean;
+  deviceLabel?: string;
+  deviceId?: string;
+}
+
+export interface AudioStream {
+  mediaStream: MediaStream;
+  audioContext: AudioContext;
+  source: MediaStreamAudioSourceNode;
+  analyser: AnalyserNode;
+}
