@@ -41,6 +41,25 @@ const nextConfig = {
         net: false,
         tls: false,
       };
+      
+      // Fix for dynamic import chunk loading issues
+      config.optimization = {
+        ...config.optimization,
+        splitChunks: {
+          ...config.optimization.splitChunks,
+          chunks: 'all',
+          cacheGroups: {
+            ...config.optimization.splitChunks?.cacheGroups,
+            // Prevent pitch.ts from being split into separate chunk
+            pitch: {
+              test: /[\\/]src[\\/]lib[\\/]pitch\.ts$/,
+              name: 'pitch',
+              chunks: 'all',
+              enforce: true,
+            },
+          },
+        },
+      };
     }
     
     return config;

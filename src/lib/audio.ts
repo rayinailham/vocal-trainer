@@ -7,6 +7,7 @@ import {
   PitchData,
   VocalRange
 } from '@/types/audio';
+import { calculateVocalRange } from './pitch';
 
 // Suppress deprecation warnings from Meyda's use of ScriptProcessorNode
 // This is a temporary solution until Meyda migrates to AudioWorklets
@@ -562,35 +563,46 @@ export class AudioProcessor {
         this.onRangeProgressCallback(this.minFrequency, this.maxFrequency);
       }
 
-      // Check if we have enough data for complete detection
-      if (this.stableReadings >= 30) { // 3 seconds at 10Hz
-        this.completeRangeDetection();
+      // Update vocal range continuously every 10 stable readings
+      // This allows users to see their range developing in real-time
+      if (this.stableReadings % 10 === 0 && this.stableReadings > 0) {
+        this.updateVocalRange();
       }
+
+      // Removed auto-stop condition - detection continues until manually stopped
+      // Users can now stop detection whenever they want
     }
   }
 
   /**
-   * Complete range detection and calculate results
+   * Calculate and update vocal range without stopping detection
    */
-  private completeRangeDetection(): void {
+  private updateVocalRange(): void {
     if (this.recordedFrequencies.length === 0) {
       return;
     }
 
-    // Import calculateVocalRange function dynamically to avoid circular dependency
-    import('./pitch').then(({ calculateVocalRange }) => {
+    // Use static import to avoid chunk loading issues
+    try {
       const range = calculateVocalRange(this.recordedFrequencies);
 
       if (this.onRangeCompleteCallback) {
         this.onRangeCompleteCallback(range);
       }
 
-      // Stop detection after completion
-      this.stopRangeDetection();
-    }).catch(error => {
-      console.error('Failed to import pitch calculation:', error);
-      this.stopRangeDetection();
-    });
+      // Removed auto-stop - detection continues until manually stopped
+    } catch (error) {
+      console.error('Failed to calculate vocal range:', error);
+      // Don't stop detection on error either
+    }
+  }
+
+  /**
+   * Complete range detection and calculate results (kept for backward compatibility)
+   */
+  private completeRangeDetection(): void {
+    // Delegate to updateVocalRange but don't stop detection
+    this.updateVocalRange();
   }
 
   /**
