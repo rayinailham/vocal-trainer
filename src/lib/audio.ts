@@ -386,32 +386,59 @@ export class AudioProcessor {
    * Clean up resources
    */
   dispose(): void {
+    console.log('[AudioProcessor] Starting cleanup process...');
+    console.log('[AudioProcessor] Current state - isProcessing:', this.isProcessing, 'isMonitoring:', this.isMonitoring);
+    
+    // Stop all active processes
     this.stopPitchDetection();
     this.stopMonitoring();
     this.stopRangeDetection();
     
+    // Stop and clean up media stream tracks
     if (this.mediaStream) {
-      this.mediaStream.getTracks().forEach(track => track.stop());
+      console.log('[AudioProcessor] Stopping media stream tracks...');
+      const tracks = this.mediaStream.getTracks();
+      console.log('[AudioProcessor] Found', tracks.length, 'tracks to stop');
+      tracks.forEach((track, index) => {
+        console.log(`[AudioProcessor] Stopping track ${index}:`, track.label, 'state:', track.readyState);
+        track.stop();
+        console.log(`[AudioProcessor] Track ${index} stopped, new state:`, track.readyState);
+      });
       this.mediaStream = null;
+    } else {
+      console.log('[AudioProcessor] No media stream to clean up');
     }
     
+    // Disconnect audio nodes
     if (this.source) {
+      console.log('[AudioProcessor] Disconnecting audio source...');
       this.source.disconnect();
       this.source = null;
     }
     
     if (this.analyser) {
+      console.log('[AudioProcessor] Disconnecting analyser...');
       this.analyser.disconnect();
       this.analyser = null;
     }
     
+    // Stop Meyda analyzer
     if (this.meydaAnalyzer) {
+      console.log('[AudioProcessor] Stopping Meyda analyzer...');
       this.meydaAnalyzer.stop();
       this.meydaAnalyzer = null;
     }
     
-    if (this.audioContext && this.audioContext.state !== 'closed') {
-      this.audioContext.close();
+    // Close audio context
+    if (this.audioContext) {
+      console.log('[AudioProcessor] Closing audio context, current state:', this.audioContext.state);
+      if (this.audioContext.state !== 'closed') {
+        this.audioContext.close().then(() => {
+          console.log('[AudioProcessor] Audio context closed successfully');
+        }).catch(error => {
+          console.error('[AudioProcessor] Error closing audio context:', error);
+        });
+      }
       this.audioContext = null;
     }
     
@@ -429,6 +456,8 @@ export class AudioProcessor {
     
     this.isProcessing = false;
     this.isMonitoring = false;
+    
+    console.log('[AudioProcessor] Cleanup completed');
   }
 
   /**

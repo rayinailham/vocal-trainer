@@ -67,15 +67,51 @@ export default function VocalRangePage() {
 
   // Initialize audio processor on component mount
   useEffect(() => {
+    console.log('[VocalRangePage] Component mounting, initializing audio processor...');
     const processor = createAudioProcessor();
     audioProcessorRef.current = processor;
     setAudioProcessor(processor);
     
-    return () => {
-      if (processor) {
-        processor.dispose();
+    // Cleanup function for component unmount and page navigation
+    const cleanup = () => {
+      console.log('[VocalRangePage] Starting cleanup process...');
+      if (audioProcessorRef.current) {
+        console.log('[VocalRangePage] Disposing audio processor...');
+        audioProcessorRef.current.dispose();
+        audioProcessorRef.current = null;
       }
-      audioProcessorRef.current = null;
+      setAudioProcessor(null);
+      setIsAudioReady(false);
+      setIsDetecting(false);
+      console.log('[VocalRangePage] Cleanup completed');
+    };
+    
+    // Handle page visibility changes (user navigating away)
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        console.log('[VocalRangePage] Page hidden, cleaning up microphone...');
+        cleanup();
+      }
+    };
+    
+    // Handle beforeunload (user closing tab/window)
+    const handleBeforeUnload = () => {
+      console.log('[VocalRangePage] Page unloading, cleaning up microphone...');
+      cleanup();
+    };
+    
+    // Add event listeners for page navigation and tab closing
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    
+    return () => {
+      console.log('[VocalRangePage] Component unmounting, cleaning up audio processor...');
+      // Remove event listeners
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      
+      // Perform cleanup
+      cleanup();
     };
   }, []);
 
@@ -182,6 +218,7 @@ export default function VocalRangePage() {
 
   // Stop detection
   const stopDetection = () => {
+    console.log('[VocalRangePage] Stopping detection...');
     if (!audioProcessor) {
       handleError(new Error('Audio processor not initialized'));
       return;
@@ -190,11 +227,13 @@ export default function VocalRangePage() {
     try {
       audioProcessor.stopRangeDetection();
       setIsDetecting(false);
+      console.log('[VocalRangePage] Detection stopped successfully');
       // Only show results if we have vocal range data
       if (vocalRange) {
         setShowResults(true);
       }
     } catch (err) {
+      console.error('[VocalRangePage] Error stopping detection:', err);
       handleError(err);
       // Still try to show results even if stopping failed
       setIsDetecting(false);

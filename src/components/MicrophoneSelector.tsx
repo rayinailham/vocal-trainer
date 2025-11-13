@@ -78,13 +78,20 @@ export default function MicrophoneSelector({
     
     try {
       // First, we need to get permission to access devices
+      console.log('[MicrophoneSelector] Requesting temporary microphone access for device enumeration...');
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      console.log('[MicrophoneSelector] Temporary stream created, tracks:', stream.getTracks().length);
       
       // Then enumerate devices
       const deviceList = await navigator.mediaDevices.enumerateDevices();
       
       // Stop the stream to free up the microphone
-      stream.getTracks().forEach(track => track.stop());
+      console.log('[MicrophoneSelector] Stopping temporary stream tracks...');
+      stream.getTracks().forEach((track, index) => {
+        console.log(`[MicrophoneSelector] Stopping temporary track ${index}:`, track.label);
+        track.stop();
+      });
+      console.log('[MicrophoneSelector] Temporary stream stopped');
       
       
       const audioInputs = deviceList
@@ -209,10 +216,12 @@ export default function MicrophoneSelector({
     navigator.mediaDevices.addEventListener('devicechange', handleDeviceChange);
     
     return () => {
+      console.log('[MicrophoneSelector] Component unmounting, cleaning up...');
       navigator.mediaDevices.removeEventListener('devicechange', handleDeviceChange);
       if (enumerationTimeoutRef.current) {
         clearTimeout(enumerationTimeoutRef.current);
       }
+      console.log('[MicrophoneSelector] Cleanup completed');
     };
   }, [selectedDeviceId, enumerateDevices]);
 
