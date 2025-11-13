@@ -26,7 +26,7 @@ export default function Navigation() {
         <div className="flex justify-between h-16">
           <div className="flex items-center">
             <Link href="/" className="flex-shrink-0 flex items-center">
-              <h1 className="text-xl font-bold text-indigo-600">Vocal Trainer</h1>
+              <h1 className="text-xl font-bold text-green-600">Vocal Trainer</h1>
             </Link>
             <div className="hidden sm:ml-8 sm:flex sm:space-x-8">
               {navItems.map((item) => (
@@ -36,7 +36,7 @@ export default function Navigation() {
                   className={cn(
                     'inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium transition-colors duration-200',
                     pathname === item.href
-                      ? 'border-indigo-500 text-gray-900'
+                      ? 'border-green-500 text-gray-900'
                       : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
                   )}
                 >
@@ -48,7 +48,7 @@ export default function Navigation() {
           <div className="flex items-center sm:hidden">
             <button
               onClick={toggleMobileMenu}
-              className="inline-flex items-center justify-center p-2 rounded-md text-gray-400 hover:text-gray-500 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-indigo-500"
+              className="inline-flex items-center justify-center p-2 rounded-md text-gray-400 hover:text-gray-500 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-green-500"
               aria-expanded="false"
             >
               <span className="sr-only">Open main menu</span>
@@ -79,7 +79,7 @@ export default function Navigation() {
               className={cn(
                 'block pl-3 pr-4 py-2 border-l-4 text-base font-medium transition-colors duration-200',
                 pathname === item.href
-                  ? 'bg-indigo-50 border-indigo-500 text-indigo-700'
+                  ? 'bg-green-50 border-green-500 text-green-700'
                   : 'border-transparent text-gray-600 hover:bg-gray-50 hover:border-gray-300 hover:text-gray-800'
               )}
               onClick={() => setIsMobileMenuOpen(false)}
