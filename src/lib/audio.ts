@@ -8,6 +8,46 @@ import {
   VocalRange
 } from '@/types/audio';
 
+// Suppress deprecation warnings from Meyda's use of ScriptProcessorNode
+// This is a temporary solution until Meyda migrates to AudioWorklets
+const suppressConsoleWarnings = (() => {
+  let isSuppressionActive = false;
+  return () => {
+    if (isSuppressionActive) return;
+    isSuppressionActive = true;
+
+    const originalError = console.error;
+    const originalWarn = console.warn;
+
+    console.error = function (...args: unknown[]) {
+      const message = String(args[0] || '');
+      // Suppress only ScriptProcessorNode deprecation from Meyda
+      if (
+        message.includes('[Deprecation]') && 
+        message.includes('ScriptProcessorNode')
+      ) {
+        return;
+      }
+      originalError.apply(console, args);
+    };
+
+    console.warn = function (...args: unknown[]) {
+      const message = String(args[0] || '');
+      // Suppress only ScriptProcessorNode deprecation from Meyda
+      if (
+        message.includes('[Deprecation]') && 
+        message.includes('ScriptProcessorNode')
+      ) {
+        return;
+      }
+      originalWarn.apply(console, args);
+    };
+  };
+})();
+
+// Call suppression when module loads
+suppressConsoleWarnings();
+
 // Type definitions for Meyda features
 interface MeydaFeatures {
   buffer: Float32Array;

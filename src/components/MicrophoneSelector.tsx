@@ -187,10 +187,11 @@ export default function MicrophoneSelector({
     onDeviceSelected(deviceId);
   };
 
-  // Initialize on component mount
+  // Initialize on component mount - ONLY once
   useEffect(() => {
     checkPermission();
-  }, [checkPermission]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Listen for device changes
   useEffect(() => {

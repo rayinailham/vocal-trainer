@@ -41,6 +41,7 @@ interface ErrorInfo {
 export default function VocalRangePage() {
   // Core audio processing state
   const [audioProcessor, setAudioProcessor] = useState<AudioProcessor | null>(null);
+  const audioProcessorRef = useRef<AudioProcessor | null>(null);
   const [selectedDeviceId, setSelectedDeviceId] = useState<string>('');
   
   // Application flow states - replaces the old step system
@@ -282,6 +283,7 @@ export default function VocalRangePage() {
   useEffect(() => {
     // Initialize audio processor on component mount
     const processor = createAudioProcessor();
+    audioProcessorRef.current = processor;
     setAudioProcessor(processor);
     
     // Load saved vocal range if exists
@@ -305,6 +307,7 @@ export default function VocalRangePage() {
       if (processor) {
         processor.dispose();
       }
+      audioProcessorRef.current = null;
       
       // Clean up device change listener
       if (deviceChangeHandler.current) {
@@ -314,42 +317,31 @@ export default function VocalRangePage() {
     };
   }, []);
 
-  const handleDeviceSelected = (deviceId: string) => {
-    if (!validateStateTransition(getCurrentState(), 'initializing', 'device selection')) {
-      return;
-    }
-    
-    setSelectedDeviceId(deviceId);
-    setError(null); // Clear any previous errors
-    // Auto-initialize audio when device is selected
-    initializeAudio(deviceId);
-  };
-
   // Memoize the pitch detection callback to prevent unnecessary re-renders
   const pitchDetectionCallback = useCallback((result: PitchDetectionResult) => {
     setCurrentPitch(result);
   }, []);
 
+  // Handle device selection - memoized to prevent infinite loops
+  const handleDeviceSelected = useCallback((deviceId: string) => {
+    // Device selection during initialization is a normal part of the setup flow
+    // No state transition validation needed here - just clear errors and initialize
+    setSelectedDeviceId(deviceId);
+    setError(null); // Clear any previous errors
+    // Auto-initialize audio when device is selected
+    // Use ref to avoid race condition with state updates
+    initializeAudio(deviceId, audioProcessorRef.current);
+  }, []);
+
+  // Handle permission changes - simplified to reduce dependency on state
   const handlePermissionChange = useCallback((permission: MicrophonePermission) => {
-    if (permission.granted) {
-      setError(null);
-      // Auto-start monitoring when permission is granted in practice mode
-      if (isAudioReady && !isMonitoring && !isDetecting) {
-        if (audioProcessor) {
-          try {
-            audioProcessor.startMonitoring(pitchDetectionCallback);
-            setIsMonitoring(true);
-          } catch (error) {
-            handleError(error, 'permission', true);
-          }
-        }
-      }
-    } else {
+    if (!permission.granted) {
       handleError(new Error('Microphone access denied. Please allow microphone access to use this feature.'), 'permission', true);
       setIsMonitoring(false);
       setIsAudioReady(false);
     }
-  }, [isAudioReady, isMonitoring, isDetecting, audioProcessor, pitchDetectionCallback, handleError]);
+    // Note: Auto-start monitoring logic moved to initializeAudio to avoid circular dependency
+  }, [handleError]);
 
   // Memoize the range detection callbacks to prevent unnecessary re-renders
   const rangeProgressCallback = useCallback((minFreq: number, maxFreq: number) => {
@@ -367,25 +359,39 @@ export default function VocalRangePage() {
    * Initializes audio with the selected device and auto-starts monitoring
    * This is a key part of the simplified flow - no separate "Start Practice" step needed
    */
-  const initializeAudio = async (deviceId: string) => {
-    if (!audioProcessor) {
+  const initializeAudio = useCallback(async (deviceId: string, existingProcessor: AudioProcessor | null = null) => {
+    // Prevent multiple simultaneous initialization attempts
+    if (deviceId === selectedDeviceId && isAudioReady && isMonitoring) {
+      console.log('[Audio] Already initialized with this device');
+      return;
+    }
+
+    let processor = existingProcessor || audioProcessor;
+    
+    if (!processor) {
+      console.error('[Audio] Processor not available');
       handleError(new Error('Audio processor not initialized'), 'processing');
       return;
     }
 
     try {
+      console.log('[Audio] Initializing with device:', deviceId);
+      
       // Dispose existing processor if any
-      if (audioProcessor.isActive()) {
-        audioProcessor.dispose();
+      if (processor.isActive()) {
+        console.log('[Audio] Disposing existing processor');
+        processor.dispose();
       }
       
       // Create new audio processor with selected device
-      const processor = createAudioProcessor({ inputDeviceId: deviceId });
+      processor = createAudioProcessor({ inputDeviceId: deviceId });
+      audioProcessorRef.current = processor;
       setAudioProcessor(processor);
       
       const permission = await processor.initialize();
       
       if (permission.granted) {
+        console.log('[Audio] Permission granted, device:', permission.deviceLabel);
         setIsAudioReady(true);
         setError(null);
         
@@ -393,17 +399,21 @@ export default function VocalRangePage() {
         try {
           processor.startMonitoring(pitchDetectionCallback);
           setIsMonitoring(true);
+          console.log('[Audio] Monitoring started');
         } catch (monitorError) {
+          console.error('[Audio] Failed to start monitoring:', monitorError);
           handleError(monitorError, 'processing', true);
           setIsAudioReady(false);
         }
       } else {
+        console.error('[Audio] Permission denied');
         handleError(new Error('Microphone access denied. Please allow microphone access to use this feature.'), 'permission', true);
       }
     } catch (err) {
+      console.error('[Audio] Initialization failed:', err);
       handleError(err, 'device', true, () => initializeAudio(deviceId));
     }
-  };
+  }, [audioProcessor, selectedDeviceId, isAudioReady, isMonitoring, pitchDetectionCallback, handleError]);
 
   const stopPractice = () => {
     if (!validateStateTransition(getCurrentState(), 'idle', 'stop practice')) {
