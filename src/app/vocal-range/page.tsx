@@ -15,6 +15,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { AudioProcessor, createAudioProcessor } from '@/lib/audio';
 import { PitchDetectionResult, VocalRange, MicrophonePermission } from '@/types/audio';
+import { saveVocalRange } from '@/lib/storage';
 import AudioVisualizer from '@/components/AudioVisualizer';
 import MicrophoneSelector from '@/components/MicrophoneSelector';
 
@@ -41,6 +42,11 @@ export default function VocalRangePage() {
   const [vocalRange, setVocalRange] = useState<VocalRange | null>(null);
   const [currentRange, setCurrentRange] = useState<{ min: number; max: number } | null>(null);
   const [isRecovering, setIsRecovering] = useState(false);
+  
+  // Storage-related states
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   
   // Refs
   const initializeAudioRef = useRef<((deviceId: string, existingProcessor?: AudioProcessor | null) => Promise<void>) | null>(null);
@@ -145,6 +151,25 @@ export default function VocalRangePage() {
   const rangeCompleteCallback = useCallback((range: VocalRange) => {
     // Update vocal range continuously without stopping detection
     setVocalRange(range);
+    
+    // Save vocal range to storage
+    setIsSaving(true);
+    setSaveError(null);
+    
+    try {
+      saveVocalRange(range);
+      setSaveSuccess(true);
+      // Clear success message after 3 seconds
+      setTimeout(() => setSaveSuccess(false), 3000);
+    } catch (error) {
+      console.error('Failed to save vocal range:', error);
+      setSaveError(error instanceof Error ? error.message : 'Failed to save vocal range');
+      // Clear error message after 5 seconds
+      setTimeout(() => setSaveError(null), 5000);
+    } finally {
+      setIsSaving(false);
+    }
+    
     // Removed setIsDetecting(false) to allow continuous detection
     // Removed setShowResults(true) to prevent UI from switching to results mode
   }, []);
@@ -254,7 +279,18 @@ export default function VocalRangePage() {
     <div className="min-h-screen bg-gray-50 py-8">
       <div className="max-w-4xl mx-auto px-4">
         <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-gray-900 mb-4">Vocal Range Detection</h1>
+          <div className="flex items-center justify-center gap-3 mb-4">
+            <h1 className="text-4xl font-bold text-gray-900">Vocal Range Detection</h1>
+            {saveSuccess && (
+              <div className="flex items-center gap-1 text-sm text-green-600 bg-green-50 px-3 py-1 rounded-full border border-green-200">
+                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd"></path>
+                </svg>
+                <span className="font-medium">Saved</span>
+              </div>
+            )}
+          </div>
+          <p className="text-gray-600">Detect your vocal range to personalize your training experience</p>
         </div>
 
         {/* Error Display */}
@@ -281,6 +317,62 @@ export default function VocalRangePage() {
                   {isRecovering ? 'Retrying...' : 'Retry'}
                 </button>
               )}
+            </div>
+          </div>
+        )}
+
+        {/* Storage Status Messages */}
+        {isSaving && (
+          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-400 text-blue-700 px-4 py-3 rounded mb-6">
+            <div className="flex items-center">
+              <div className="flex-shrink-0">
+                <svg className="animate-spin h-5 w-5 mr-3 text-blue-600" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+              </div>
+              <div className="ml-3">
+                <div className="font-medium text-blue-800">💾 Saving your vocal range data...</div>
+                <div className="text-sm text-blue-700">This will enable personalized training experiences</div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {saveSuccess && (
+          <div className="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-400 text-green-700 px-4 py-3 rounded mb-6">
+            <div className="flex items-start">
+              <div className="flex-shrink-0">
+                <svg className="h-5 w-5 mr-3 text-green-600" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd"></path>
+                </svg>
+              </div>
+              <div className="ml-3">
+                <div className="font-medium text-green-800">✨ Vocal range saved successfully!</div>
+                <div className="text-sm text-green-700 mt-1">This data will be used to personalize your training sessions with optimal root notes.</div>
+                <div className="text-xs text-green-600 mt-2 bg-white/50 p-2 rounded border border-green-200">
+                  <span className="font-medium">💡 What&apos;s next?</span> Visit the Vocal Training page to experience personalized exercises based on your vocal range.
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {saveError && (
+          <div className="bg-gradient-to-r from-yellow-50 to-amber-50 border border-yellow-400 text-yellow-700 px-4 py-3 rounded mb-6">
+            <div className="flex items-start">
+              <div className="flex-shrink-0">
+                <svg className="h-5 w-5 mr-3 text-yellow-600" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd"></path>
+                </svg>
+              </div>
+              <div className="ml-3">
+                <div className="font-medium text-yellow-800">⚠️ Unable to save vocal range</div>
+                <div className="text-sm text-yellow-700 mt-1">{saveError}</div>
+                <div className="text-xs text-yellow-600 mt-2 bg-white/50 p-2 rounded border border-yellow-200">
+                  <span className="font-medium">💡 Tip:</span> Your vocal range detection still works, but training personalization may be limited. Try refreshing the page.
+                </div>
+              </div>
             </div>
           </div>
         )}

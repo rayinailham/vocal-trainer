@@ -6,7 +6,8 @@ import {
   noteToFrequency,
   frequencyToNote,
   isPitchInTolerance,
-  calculateCentsDifference
+  calculateCentsDifference,
+  calculateOptimalRootNote
 } from '@/lib/pitch';
 import {
   TrainingMode,
@@ -144,6 +145,7 @@ export default function VocalTrainingPage() {
   const [previousSessions, setPreviousSessions] = useState<TrainingSession[]>([]);
   const [savedVocalRange, setSavedVocalRange] = useState<VocalRange | null>(null);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [showVocalRangeDetails, setShowVocalRangeDetails] = useState(false);
   
   // Refs for timing and pitch tracking
   const noteStartTime = useRef<number>(0);
@@ -165,11 +167,9 @@ export default function VocalTrainingPage() {
     const vocalRange = loadVocalRange();
     if (vocalRange) {
       setSavedVocalRange(vocalRange);
-      // Adjust root note based on vocal range if available
-      const noteInMiddle = getMiddleNote(vocalRange);
-      if (noteInMiddle) {
-        setRootNote(noteInMiddle);
-      }
+      // Adjust root note based on vocal range if available using optimized calculation
+      const optimalRootNote = calculateOptimalRootNote(vocalRange);
+      setRootNote(optimalRootNote);
     }
     
     return () => {
@@ -327,6 +327,9 @@ export default function VocalTrainingPage() {
     };
   };
 
+  // Note: getMiddleNote function has been moved to pitch.ts as calculateOptimalRootNote
+  // This local function is kept for backward compatibility but is no longer used
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const getMiddleNote = (vocalRange: VocalRange): string | null => {
     if (!vocalRange || !vocalRange.lowestNote || !vocalRange.highestNote) {
       return null;
@@ -650,9 +653,17 @@ export default function VocalTrainingPage() {
 
             {/* Root Note Selection */}
             <div className="mb-6">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Root Note
-              </label>
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-sm font-medium text-gray-700">
+                  Root Note
+                </label>
+                {savedVocalRange && (
+                  <div className="flex items-center gap-1">
+                    <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                    <span className="text-xs text-green-600 font-medium">Auto-adjusted</span>
+                  </div>
+                )}
+              </div>
               <select
                 value={rootNote}
                 onChange={(e) => setRootNote(e.target.value)}
@@ -662,6 +673,11 @@ export default function VocalTrainingPage() {
                   <option key={note} value={`${note}4`}>{note}4</option>
                 ))}
               </select>
+              {savedVocalRange && (
+                <div className="mt-2 text-xs text-gray-600 bg-blue-50 p-2 rounded border border-blue-200">
+                  <span className="font-medium text-blue-700">💡 Personalized for you:</span> This root note was automatically selected based on your vocal range ({savedVocalRange.lowestNote} - {savedVocalRange.highestNote}) to ensure optimal comfort during training.
+                </div>
+              )}
             </div>
 
             {/* Training Settings */}
@@ -713,13 +729,57 @@ export default function VocalTrainingPage() {
 
             {/* Vocal Range Info */}
             {savedVocalRange && (
-              <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                <h3 className="text-sm font-medium text-blue-800 mb-2">Your Vocal Range</h3>
-                <div className="text-sm text-blue-700">
-                  Range: {savedVocalRange.lowestNote} - {savedVocalRange.highestNote} ({savedVocalRange.voiceType})
-                </div>
-                <div className="text-xs text-blue-600 mt-1">
-                  Training adjusted to your vocal range
+              <div className="mb-6">
+                <div className="p-4 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-sm font-medium text-blue-800 flex items-center gap-2">
+                      <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                      Your Vocal Range
+                    </h3>
+                    <button
+                      onClick={() => setShowVocalRangeDetails(!showVocalRangeDetails)}
+                      className="text-xs text-blue-600 hover:text-blue-800 font-medium flex items-center gap-1"
+                    >
+                      {showVocalRangeDetails ? 'Hide Details' : 'Show Details'}
+                      <svg className={`w-3 h-3 transform transition-transform ${showVocalRangeDetails ? 'rotate-180' : ''}`} fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd"></path>
+                      </svg>
+                    </button>
+                  </div>
+                  
+                  <div className="text-sm text-blue-700">
+                    <div className="flex items-center justify-between mb-1">
+                      <span>Range:</span>
+                      <span className="font-mono font-semibold">{savedVocalRange.lowestNote} - {savedVocalRange.highestNote}</span>
+                    </div>
+                    <div className="flex items-center justify-between mb-2">
+                      <span>Voice Type:</span>
+                      <span className="font-semibold capitalize">{savedVocalRange.voiceType}</span>
+                    </div>
+                    <div className="text-xs text-blue-600 bg-white/50 p-2 rounded border border-blue-100">
+                      <span className="font-medium">✨ Training personalized</span> - Root note and exercises adjusted for your vocal range
+                    </div>
+                  </div>
+                  
+                  {showVocalRangeDetails && (
+                    <div className="mt-3 pt-3 border-t border-blue-200 text-xs text-blue-600 space-y-1">
+                      <div className="flex justify-between">
+                        <span>Lowest Frequency:</span>
+                        <span className="font-mono">{savedVocalRange.lowestFrequency.toFixed(1)} Hz</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Highest Frequency:</span>
+                        <span className="font-mono">{savedVocalRange.highestFrequency.toFixed(1)} Hz</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Range Span:</span>
+                        <span className="font-mono">{(savedVocalRange.highestFrequency - savedVocalRange.lowestFrequency).toFixed(1)} Hz</span>
+                      </div>
+                      <div className="mt-2 pt-2 border-t border-blue-100 text-xs text-blue-500">
+                        <span className="font-medium">💡 Tip:</span> Retake your vocal range test periodically to track improvement and ensure optimal training adjustments.
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
